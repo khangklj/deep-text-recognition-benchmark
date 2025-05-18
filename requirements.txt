@@ -1,0 +1,6 @@
+fire
+lmdb
+opencv-python
+natsort
+nltk
+six
