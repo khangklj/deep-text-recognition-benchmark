@@ -1,5 +1,3 @@
-""" a modified version of CRNN torch repository https://github.com/bgshih/crnn/blob/master/tool/create_dataset.py """
-
 import fire
 import os
 import lmdb
@@ -35,16 +33,21 @@ def createDataset(inputPath, gtFile, outputPath, checkValid=True):
         checkValid : if true, check the validity of every image
     """
     os.makedirs(outputPath, exist_ok=True)
-    env = lmdb.open(outputPath, map_size=1099511627776)
+    env = lmdb.open(outputPath, map_size=1073741824) #TODO Changed map size
     cache = {}
     cnt = 1
 
-    with open(gtFile, 'r', encoding='utf-8') as data:
+    with open(gtFile, 'r') as data: #TODO removed utf-8 encoding here since I have norwegian letters
         datalist = data.readlines()
 
     nSamples = len(datalist)
+    print(nSamples)
     for i in range(nSamples):
-        imagePath, label = datalist[i].strip('\n').split('\t')
+        #TODO changed the way imagePath is found as well to match my usecase
+        imagePath, label = datalist[i].strip('\n').split('.png')
+        imagePath += '.png'
+
+        # imagePath, label = datalist[i].strip('\n').split('\t')
         imagePath = os.path.join(inputPath, imagePath)
 
         # # only use alphanumeric data
