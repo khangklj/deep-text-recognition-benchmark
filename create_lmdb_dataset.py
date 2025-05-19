@@ -44,8 +44,10 @@ def createDataset(inputPath, gtFile, outputPath, checkValid=True):
     print(nSamples)
     for i in range(nSamples):
         #TODO changed the way imagePath is found as well to match my usecase
-        imagePath, label = datalist[i].strip('\n').split('.png')
-        imagePath += '.png'
+        # imagePath, label = datalist[i].strip('\n').split('.jpg')
+        # imagePath += '.jpg'
+        imagePath, label = datalist[i].strip('\n').split(' ', 1)
+        # imagePath += '.jpg'
 
         # imagePath, label = datalist[i].strip('\n').split('\t')
         imagePath = os.path.join(inputPath, imagePath)
