@@ -205,5 +205,5 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
-output
+output_aug
 log_demo_result.txt
