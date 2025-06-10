@@ -77,13 +77,24 @@ def train(opt):
 
     # data parallel for multi-GPU
     model = torch.nn.DataParallel(model).to(device)
-    model.train()
+    # Load pretrained model before freezing
     if opt.saved_model != '':
         print(f'loading pretrained model from {opt.saved_model}')
-        if opt.FT:
-            model.load_state_dict(torch.load(opt.saved_model), strict=False)
+        # Using strict=False is good practice when loading a pre-trained model where
+        # some layers might be missing or have different sizes (e.g., if you're changing the head).
+        model.load_state_dict(torch.load(opt.saved_model), strict=False)
+
+
+    # --- FREEZING LAYERS ---
+    # Iterate through named parameters and set requires_grad to False for layers you want to freeze
+    for name, param in model.named_parameters():
+        if 'FeatureExtraction' in name or 'SequenceModeling' in name:
+            param.requires_grad = False
+            print(f'Freezing layer: {name}')
         else:
-            model.load_state_dict(torch.load(opt.saved_model))
+            param.requires_grad = True # Ensure Prediction layer is trainable
+
+    model.train() # Set model to training mode
     print("Model:")
     print(model)
 
@@ -101,6 +112,7 @@ def train(opt):
     loss_avg = Averager()
 
     # filter that only require gradient decent
+    # This part is crucial: only optimize parameters that still require gradients (i.e., not frozen)
     filtered_parameters = []
     params_num = []
     for p in filter(lambda p: p.requires_grad, model.parameters()):
@@ -130,6 +142,8 @@ def train(opt):
 
     """ start training """
     start_iter = 0
+    # The existing start_iter logic might be redundant if you always want to start from scratch
+    # when freezing layers, but it's kept for consistency.
     if opt.saved_model != '':
         try:
             start_iter = int(opt.saved_model.split('_')[-1].split('.')[0])
@@ -166,7 +180,8 @@ def train(opt):
 
         model.zero_grad()
         cost.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), opt.grad_clip)  # gradient clipping with 5 (Default)
+        # Apply gradient clipping only to trainable parameters
+        torch.nn.utils.clip_grad_norm_(filtered_parameters, opt.grad_clip)
         optimizer.step()
 
         loss_avg.add(cost)
@@ -237,9 +252,9 @@ if __name__ == '__main__':
     parser.add_argument('--num_iter', type=int, default=300000, help='number of iterations to train for')
     parser.add_argument('--valInterval', type=int, default=2000, help='Interval between each validation')
     parser.add_argument('--saved_model', default='', help="path to model to continue training")
-    parser.add_argument('--FT', action='store_true', help='whether to do fine-tuning')
+    parser.add_argument('--FT', action='store_true', help='whether to do fine-tuning') # This flag is already present.
     parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is Adadelta)')
-    parser.add_argument('--lr', type=float, default=0.1, help='learning rate, default=1.0 for Adadelta')
+    parser.add_argument('--lr', type=float, default=0.001, help='learning rate, default=1.0 for Adadelta')
     parser.add_argument('--beta1', type=float, default=0.9, help='beta1 for adam. default=0.9')
     parser.add_argument('--rho', type=float, default=0.95, help='decay rate rho for Adadelta. default=0.95')
     parser.add_argument('--eps', type=float, default=1e-8, help='eps for Adadelta. default=1e-8')
@@ -275,7 +290,7 @@ if __name__ == '__main__':
     parser.add_argument('--hidden_size', type=int, default=256, help='the size of the LSTM hidden state')
 
     opt = parser.parse_args()
-    opt.character = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ªÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿĀāĂăĄąĆćČčĎďĐđĒēĖėĘęĚěĞğĨĩĪīĮįİıĶķĹĺĻļĽľŁłŃńŅņŇňŒœŔŕŘřŚśŞşŠšŤťŨũŪūŮůŲųŸŹźŻżŽžƏƠơƯưȘșȚțə̇ḌḍḶḷṀṁṂṃṄṅṆṇṬṭẠạẢảẤấẦầẨẩẪẫẬậẮắẰằẲẳẴẵẶặẸẹẺẻẼẽẾếỀềỂểỄễỆệỈỉỊịỌọỎỏỐốỒồỔổỖỗỘộỚớỜờỞởỠỡỢợỤụỦủỨứỪừỬửỮữỰựỲỳỴỵỶỷỸỹ€"
+    opt.character = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ªÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿĀāĂăĄąĆćČčĎčĐđĒēĖėĘęĚěĞğĨĩĪīĮįİıĶķĹĺĻļĽľŁłŃńŅņŇňŒœŔŕŘřŚśŞşŠšŤťŨũŪūŮůŲųŸŹźŻżŽžƏƠơƯưȘșȚțə̇ḌḍḶḷḀṁṂṃṄṅṆṇṬṭẠạẢảẤấẦầẨẩẪẫẬậẮắẰằẲẳẴẵẶặẸẹẺẻẼẽẾếỀềỂểỄễỆệỈỉỊịỌọỎỏỐốỒồỔổỖỗỘộỚớỜờỞởỠỡỢợỤụỦủỨứỪừỬửỮữỰựỲỳỴỵỶỷỸỹ€"
 
     if not opt.exp_name:
         opt.exp_name = f'{opt.Transformation}-{opt.FeatureExtraction}-{opt.SequenceModeling}-{opt.Prediction}'
@@ -306,13 +321,5 @@ if __name__ == '__main__':
         # check multi-GPU issue https://github.com/clovaai/deep-text-recognition-benchmark/issues/1
         opt.workers = opt.workers * opt.num_gpu
         opt.batch_size = opt.batch_size * opt.num_gpu
-
-        """ previous version
-        print('To equlize batch stats to 1-GPU setting, the batch_size is multiplied with num_gpu and multiplied batch_size is ', opt.batch_size)
-        opt.batch_size = opt.batch_size * opt.num_gpu
-        print('To equalize the number of epochs to 1-GPU setting, num_iter is divided with num_gpu by default.')
-        If you dont care about it, just commnet out these line.)
-        opt.num_iter = int(opt.num_iter / opt.num_gpu)
-        """
 
     train(opt)
