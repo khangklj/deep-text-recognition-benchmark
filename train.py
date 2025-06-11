@@ -17,7 +17,7 @@ from dataset import hierarchical_dataset, AlignCollate, Batch_Balanced_Dataset
 from model import Model
 from test import validation
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+print("My device: " + str(device))
 
 def train(opt):
     """ dataset preparation """
@@ -88,7 +88,14 @@ def train(opt):
     # --- FREEZING LAYERS ---
     # Iterate through named parameters and set requires_grad to False for layers you want to freeze
     for name, param in model.named_parameters():
-        if 'FeatureExtraction' in name or 'SequenceModeling' in name:
+        # if 'FeatureExtraction' in name or 'SequenceModeling' in name:
+        if opt.freeze_FeatureExtraction and 'FeatureExtraction' in name:
+            param.requires_grad = False
+            print(f'Freezing layer: {name}')
+        elif opt.freeze_SequenceModeling and 'SequenceModeling' in name:
+            param.requires_grad = False
+            print(f'Freezing layer: {name}')
+        elif opt.freeze_Prediction and 'Prediction' in name:
             param.requires_grad = False
             print(f'Freezing layer: {name}')
         else:
@@ -288,6 +295,9 @@ if __name__ == '__main__':
     parser.add_argument('--output_channel', type=int, default=256,
                         help='the number of output channel of Feature extractor')
     parser.add_argument('--hidden_size', type=int, default=256, help='the size of the LSTM hidden state')
+    parser.add_argument('--freeze_FeatureExtraction', action='store_true', help='freeze FeatureExtraction parameters')
+    parser.add_argument('--freeze_SequenceModeling', action='store_true', help='freeze SequenceModeling parameters')
+    parser.add_argument('--freeze_Prediction', action='store_true', help='freeze Prediction parameters')
 
     opt = parser.parse_args()
     opt.character = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~ªÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿĀāĂăĄąĆćČčĎčĐđĒēĖėĘęĚěĞğĨĩĪīĮįİıĶķĹĺĻļĽľŁłŃńŅņŇňŒœŔŕŘřŚśŞşŠšŤťŨũŪūŮůŲųŸŹźŻżŽžƏƠơƯưȘșȚțə̇ḌḍḶḷḀṁṂṃṄṅṆṇṬṭẠạẢảẤấẦầẨẩẪẫẬậẮắẰằẲẳẴẵẶặẸẹẺẻẼẽẾếỀềỂểỄễỆệỈỉỊịỌọỎỏỐốỒồỔổỖỗỘộỚớỜờỞởỠỡỢợỤụỦủỨứỪừỬửỮữỰựỲỳỴỵỶỷỸỹ€"
@@ -300,9 +310,9 @@ if __name__ == '__main__':
     os.makedirs(f'./saved_models/{opt.exp_name}', exist_ok=True)
 
     """ vocab / character number configuration """
-    if opt.sensitive:
+    # if opt.sensitive:
         # opt.character += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-        opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
+        # opt.character = string.printable[:-6]  # same with ASTER setting (use 94 char).
 
     """ Seed and GPU setting """
     # print("Random Seed: ", opt.manualSeed)
