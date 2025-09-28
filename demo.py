@@ -12,6 +12,7 @@ from utils import CTCLabelConverter, AttnLabelConverter, Averager
 from nltk.metrics.distance import edit_distance
 from dataset import hierarchical_dataset, AlignCollate  # Changed from RawDataset
 from model import Model
+from tqdm import tqdm
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -89,13 +90,15 @@ def evaluate(opt):
 
     log = open(f"./log_demo_result.txt", "a", encoding="utf-8")
     dashed_line = "-" * 80
-    head = f'{"Ground Truth":25s}\t{"Prediction":25s}\tConfidence Score\tCorrect\tNormalized ED'
+    # head = f'{"Ground Truth":25s}\t{"Prediction":25s}\tConfidence Score\tCorrect\tNormalized ED'
 
-    print(f"{dashed_line}\n{head}\n{dashed_line}")
-    log.write(f"{dashed_line}\n{head}\n{dashed_line}\n")
+    # print(f"{dashed_line}\n{head}\n{dashed_line}")
+    # log.write(f"{dashed_line}\n{head}\n{dashed_line}\n")
 
     with torch.no_grad():
-        for i, (image_tensors, labels) in enumerate(eval_loader):  # Now we get labels
+        for i, (image_tensors, labels) in enumerate(
+            tqdm(eval_loader, desc="Evaluating", unit="batch")
+        ):
             batch_size = image_tensors.size(0)
             image = image_tensors.to(device)
 
@@ -143,13 +146,6 @@ def evaluate(opt):
                 # Convert norm_ed to a tensor before adding to Averager
                 norm_ED_score_avg.add(
                     torch.tensor(norm_ed, dtype=torch.float32).to(device)
-                )
-
-                print(
-                    f"{gt:25s}\t{pred:25s}\t{confidence_score:0.4f}\t{str(is_correct):5s}\t{norm_ed:0.4f}"
-                )
-                log.write(
-                    f"{gt:25s}\t{pred:25s}\t{confidence_score:0.4f}\t{str(is_correct):5s}\t{norm_ed:0.4f}\n"
                 )
 
             total_data += batch_size
