@@ -19,6 +19,21 @@ from model import Model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def get_normalized_ed(pred, gt):
+    """
+    Calculates Normalized Edit Distance (NED) following the logic from train.py,
+    using the edit_distance function from utils.
+    """
+    distance = edit_distance(pred, gt)  # Use the imported edit_distance
+
+    if len(gt) == 0 or len(pred) == 0:
+        return 0.0
+    elif len(gt) > len(pred):
+        return 1 - (distance / len(gt))
+    else:
+        return 1 - (distance / len(pred))
+
+
 def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=False):
     """evaluation with 10 benchmark evaluation datasets"""
     # The evaluation datasets, dataset order is same with Table 1 in our paper.
@@ -35,10 +50,6 @@ def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=Fa
         "CUTE80",
     ]
 
-    # # To easily compute the total accuracy of our paper.
-    # eval_data_list = ['IIIT5k_3000', 'SVT', 'IC03_867',
-    #                   'IC13_1015', 'IC15_2077', 'SVTP', 'CUTE80']
-
     if calculate_infer_time:
         evaluation_batch_size = (
             1  # batch_size should be 1 to calculate the GPU inference time per image.
@@ -50,6 +61,7 @@ def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=Fa
     total_forward_time = 0
     total_evaluation_data_number = 0
     total_correct_number = 0
+    total_norm_ed_score = 0
     log = open(f"./result/{opt.exp_name}/log_all_evaluation.txt", "a")
     dashed_line = "-" * 80
     print(dashed_line)
@@ -83,6 +95,7 @@ def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=Fa
         total_forward_time += infer_time
         total_evaluation_data_number += len(eval_data)
         total_correct_number += accuracy_by_best_model * length_of_data
+        total_norm_ed_score += norm_ED_by_best_model * length_of_data
         log.write(eval_data_log)
         print(
             f"Acc {accuracy_by_best_model:0.3f}\t normalized_ED {norm_ED_by_best_model:0.3f}"
@@ -95,12 +108,14 @@ def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=Fa
 
     averaged_forward_time = total_forward_time / total_evaluation_data_number * 1000
     total_accuracy = total_correct_number / total_evaluation_data_number
+    total_norm_ed = total_norm_ed_score / total_evaluation_data_number
     params_num = sum([np.prod(p.size()) for p in model.parameters()])
 
     evaluation_log = "accuracy: "
     for name, accuracy in zip(eval_data_list, list_accuracy):
         evaluation_log += f"{name}: {accuracy}\t"
     evaluation_log += f"total_accuracy: {total_accuracy:0.3f}\t"
+    evaluation_log += f"total_norm_ed: {total_norm_ed:0.3f}\t"
     evaluation_log += f"averaged_infer_time: {averaged_forward_time:0.3f}\t# parameters: {params_num/1e6:0.3f}"
     print(evaluation_log)
     log.write(evaluation_log + "\n")
@@ -112,7 +127,7 @@ def benchmark_all_eval(model, criterion, converter, opt, calculate_infer_time=Fa
 def validation(model, criterion, evaluation_loader, converter, opt):
     """validation or evaluation"""
     n_correct = 0
-    norm_ED = 0
+    norm_ED_score_avg = Averager()
     length_of_data = 0
     infer_time = 0
     valid_loss_avg = Averager()
@@ -211,22 +226,9 @@ def validation(model, criterion, evaluation_loader, converter, opt):
             if pred == gt:
                 n_correct += 1
 
-            """
-            (old version) ICDAR2017 DOST Normalized Edit Distance https://rrc.cvc.uab.es/?ch=7&com=tasks
-            "For each word we calculate the normalized edit distance to the length of the ground truth transcription."
-            if len(gt) == 0:
-                norm_ED += 1
-            else:
-                norm_ED += edit_distance(pred, gt) / len(gt)
-            """
-
-            # ICDAR2019 Normalized Edit Distance
-            if len(gt) == 0 or len(pred) == 0:
-                norm_ED += 0
-            elif len(gt) > len(pred):
-                norm_ED += 1 - edit_distance(pred, gt) / len(gt)
-            else:
-                norm_ED += 1 - edit_distance(pred, gt) / len(pred)
+            # Calculate Normalized Edit Distance
+            norm_ed = get_normalized_ed(pred, gt)
+            norm_ED_score_avg.add(torch.tensor(norm_ed, dtype=torch.float32).to(device))
 
             # calculate confidence score (= multiply of pred_max_prob)
             try:
@@ -237,12 +239,12 @@ def validation(model, criterion, evaluation_loader, converter, opt):
             # print(pred, gt, pred==gt, confidence_score)
 
     accuracy = n_correct / float(length_of_data) * 100
-    norm_ED = norm_ED / float(length_of_data)  # ICDAR2019 Normalized Edit Distance
+    avg_norm_ED = norm_ED_score_avg.val()
 
     return (
         valid_loss_avg.val(),
         accuracy,
-        norm_ED,
+        avg_norm_ED,
         preds_str,
         confidence_score_list,
         labels,
@@ -316,12 +318,14 @@ def test(opt):
                 collate_fn=AlignCollate_evaluation,
                 pin_memory=True,
             )
-            _, accuracy_by_best_model, _, _, _, _, _, _ = validation(
+            _, accuracy_by_best_model, norm_ED, _, _, _, _, _ = validation(
                 model, criterion, evaluation_loader, converter, opt
             )
             log.write(eval_data_log)
-            print(f"{accuracy_by_best_model:0.3f}")
-            log.write(f"{accuracy_by_best_model:0.3f}\n")
+            print(f"Accuracy: {accuracy_by_best_model:0.3f}%")
+            print(f"Normalized Edit Distance (NED): {norm_ED:0.4f}")
+            log.write(f"Accuracy: {accuracy_by_best_model:0.3f}%\n")
+            log.write(f"Normalized Edit Distance (NED): {norm_ED:0.4f}\n")
             log.close()
 
 
